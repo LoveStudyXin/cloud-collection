@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>云朵收集器 - 收集属于你的云彩卡牌</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <h1>☁️ 云朵收集器</h1>
+            <p class="subtitle">收集属于你的云彩卡牌</p>
+        </header>
+
+        <main class="main-content">
+            <!-- 上传区域 -->
+            <section class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-placeholder" id="uploadPlaceholder">
+                        <div class="upload-icon">📷</div>
+                        <p>点击上传云朵图片</p>
+                        <span class="upload-hint">支持拖拽 · JPG / PNG / WEBP</span>
+                    </div>
+                    <div class="preview-container" id="previewContainer" style="display: none;">
+                        <img id="previewImage" class="preview-image" alt="预览图片">
+                        <button class="preview-close-btn" id="clearBtn" type="button">&times;</button>
+                    </div>
+                    <input type="file" id="fileInput" accept="image/*" hidden>
+                </div>
+            </section>
+
+            <!-- 识别按钮 -->
+            <section class="action-section">
+                <button class="btn btn-recognize" id="recognizeBtn" disabled>
+                    <span class="btn-text">开始识别</span>
+                    <span class="btn-loading" style="display: none;">识别中...</span>
+                </button>
+            </section>
+
+            <!-- 结果区域 - 卡牌展示 -->
+            <section class="result-section" id="resultSection" style="display: none;">
+                <!-- 云朵卡牌 -->
+                <div class="cloud-card" id="cloudCard">
+                    <div class="card-rarity-banner" id="rarityBanner"><span>常见</span></div>
+                    <div class="card-image-area">
+                        <img id="cardImage" src="" alt="云朵卡牌">
+                    </div>
+                    <div class="card-info">
+                        <div class="card-header">
+                            <h2 class="card-name" id="cardName">--</h2>
+                            <div class="card-score" id="cardScore">
+                                <span class="score-num">0</span>
+                                <span class="score-text">分</span>
+                            </div>
+                        </div>
+                        <div class="card-genus" id="cardGenus">--</div>
+                    </div>
+                    <button class="btn btn-collect" id="collectBtn">
+                        <span>点亮图鉴</span>
+                    </button>
+                </div>
+
+                <!-- 详细识别结果 -->
+                <div class="result-details">
+                    <h3 class="result-details-title">识别结果详情</h3>
+
+                    <div class="result-grid">
+                        <!-- 云族 -->
+                        <div class="result-item">
+                            <div class="result-icon">🌤️</div>
+                            <div class="result-content">
+                                <h4>云族</h4>
+                                <p id="cloudFamily">--</p>
+                            </div>
+                        </div>
+
+                        <!-- 云属 -->
+                        <div class="result-item">
+                            <div class="result-icon">☁️</div>
+                            <div class="result-content">
+                                <h4>云属</h4>
+                                <p id="cloudGenusDetail">--</p>
+                            </div>
+                        </div>
+
+                        <!-- 云种/变种 -->
+                        <div class="result-item">
+                            <div class="result-icon">🔍</div>
+                            <div class="result-content">
+                                <h4>云种/变种</h4>
+                                <p id="cloudSpecies">--</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 识别特征 -->
+                    <div class="result-item full-width">
+                        <div class="result-icon">📝</div>
+                        <div class="result-content">
+                            <h4>识别特征</h4>
+                            <p id="cloudFeatures">--</p>
+                        </div>
+                    </div>
+
+                    <!-- 天气预兆 -->
+                    <div class="result-item full-width">
+                        <div class="result-icon">🌦️</div>
+                        <div class="result-content">
+                            <h4>天气预兆</h4>
+                            <p id="cloudWeather">--</p>
+                        </div>
+                    </div>
+
+                    <!-- 知识延伸 -->
+                    <div class="result-item full-width">
+                        <div class="result-icon">📚</div>
+                        <div class="result-content">
+                            <h4>知识延伸</h4>
+                            <p id="cloudKnowledge">--</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 云朵图鉴 - 成就墙风格 -->
+            <section class="guide-section">
+                <div class="guide-header">
+                    <h2 class="section-title">云朵图鉴</h2>
+                    <div class="total-score-badge">
+                        <span class="total-score-icon">⭐</span>
+                        <span class="total-score-value" id="totalScore">0</span>
+                        <span class="total-score-label">总积分</span>
+                    </div>
+                </div>
+                <div class="guide-stats">
+                    <div class="guide-stat-item">
+                        <span class="guide-stat-value" id="litCount">0</span>
+                        <span class="guide-stat-label">已点亮</span>
+                    </div>
+                    <div class="guide-stat-divider">/</div>
+                    <div class="guide-stat-item">
+                        <span class="guide-stat-value" id="totalCardCount">0</span>
+                        <span class="guide-stat-label">全部</span>
+                    </div>
+                    <div class="guide-stat-progress">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                </div>
+                <!-- 成就墙：按云族分区展示 -->
+                <div class="guide-wall" id="guideWall">
+                    <!-- 动态填充云族分区 -->
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>基于《云彩收集者手册》知识体系 | 收集稀有云彩卡牌</p>
+        </footer>
+    </div>
+
+    <!-- 翻卡揭晓弹窗 -->
+    <div class="flip-card-overlay" id="flipCardOverlay" style="display: none;">
+        <div class="flip-card-modal">
+            <div class="flip-card-hint">点击卡牌揭晓</div>
+            <div class="flip-card-container">
+                <div class="flip-card" id="flipCard">
+                    <!-- 卡牌背面 -->
+                    <div class="flip-card-face flip-card-back">
+                        <div class="card-back-pattern">
+                            <div class="card-back-border"></div>
+                            <div class="card-back-icon">☁️</div>
+                            <div class="card-back-text">云朵收集器</div>
+                        </div>
+                    </div>
+                    <!-- 卡牌正面 -->
+                    <div class="flip-card-face flip-card-front">
+                        <div class="flip-card-rarity" id="flipCardRarity">普通</div>
+                        <div class="flip-card-image">
+                            <img id="flipCardImage" src="" alt="云朵">
+                        </div>
+                        <div class="flip-card-info">
+                            <div class="flip-card-name" id="flipCardName">--</div>
+                            <div class="flip-card-genus" id="flipCardGenus">--</div>
+                            <div class="flip-card-score">
+                                <span class="flip-score-icon">⭐</span>
+                                <span class="flip-score-num" id="flipCardScore">0</span>
+                                <span class="flip-score-text">分</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="flip-card-actions" id="flipCardActions" style="display: none;">
+                <button class="btn btn-collect-modal" id="collectBtnModal" type="button">点亮图鉴</button>
+                <button class="btn btn-detail" id="detailBtn" type="button">查看详情</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 飞入动画的克隆卡牌 -->
+    <div class="flying-card" id="flyingCard" style="display: none;">
+        <div class="flying-card-icon" id="flyingCardIcon">☁️</div>
+    </div>
+
+    <!-- API Key 设置弹窗 -->
+    <div class="modal-overlay" id="apiKeyModal" style="display: none;">
+        <div class="modal">
+            <h3>🔑 设置 API Key</h3>
+            <p>请输入阿里云百炼 API Key 以启用云朵识别功能</p>
+            <input type="password" id="apiKeyInput" placeholder="sk-...">
+            <div class="modal-hint">
+                <a href="https://help.aliyun.com/zh/model-studio/get-api-key" target="_blank">如何获取 API Key？</a>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="cancelApiBtn">取消</button>
+                <button class="btn btn-primary" id="saveApiBtn">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="cloud-data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
