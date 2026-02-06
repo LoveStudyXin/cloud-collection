@@ -1,7 +1,10 @@
 import { cloudCards, cloudCardMap } from '@/data/cloudCards';
 import type { RecognitionResult, AIAnalysis } from '@/types/cloud';
 
-const API_BASE_URL = '/api/dashscope/compatible-mode/v1';
+// 生产环境直接调用阿里云 API，本地开发通过 Vite proxy
+const API_BASE_URL = import.meta.env.DEV
+  ? '/api/dashscope/compatible-mode/v1'
+  : 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 const MODEL_NAME = 'qwen-vl-plus';
 
 const API_KEY_STORAGE = 'dashscope_api_key';
