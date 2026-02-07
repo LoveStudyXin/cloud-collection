@@ -25,7 +25,7 @@ type ViewState =
 function App() {
   const auth = useAuth();
   const [view, setView] = useState<ViewState>(auth.isAuthenticated ? { type: 'home' } : { type: 'login' });
-  const { points, getCardState, litCard, unlockCard, getStreakInfo, isInCooldown } = useUserState();
+  const { points, getCardState, litCard, unlockCard, getStreakInfo, isInCooldown } = useUserState(auth.isAuthenticated);
 
   // Handle image capture
   const handleCapture = useCallback((file: File) => {

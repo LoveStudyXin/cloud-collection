@@ -11,7 +11,7 @@ interface CollectionPageProps {
   points: number;
   getCardState: (cardId: string) => UserCardState;
   onCardClick: (card: CloudCard) => void;
-  onUnlockCard: (cardId: string) => boolean;
+  onUnlockCard: (cardId: string) => Promise<boolean>;
   onBack: () => void;
 }
 
@@ -47,8 +47,8 @@ export function CollectionPage({ points, getCardState, onCardClick, onUnlockCard
     }
   };
 
-  const handleUnlock = (cardId: string) => {
-    const success = onUnlockCard(cardId);
+  const handleUnlock = async (cardId: string) => {
+    const success = await onUnlockCard(cardId);
     if (success) {
       setUnlockingCard(null);
     }
