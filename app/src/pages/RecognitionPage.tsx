@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { RecognitionLoader } from '@/components/RecognitionLoader';
-import { ApiKeyModal } from '@/components/ApiKeyModal';
 import type { RecognitionResult } from '@/types/cloud';
-import { recognizeCloud, hasApiKey } from '@/services/cloudRecognition';
+import { recognizeCloud } from '@/services/cloudRecognition';
 
 interface RecognitionPageProps {
   imageUrl?: string;
@@ -13,7 +12,6 @@ interface RecognitionPageProps {
 }
 
 export function RecognitionPage({ imageUrl, imageFile, onRecognitionComplete, onError }: RecognitionPageProps) {
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [statusText, setStatusText] = useState('正在分析云彩特征...');
   const [started, setStarted] = useState(false);
 
@@ -26,12 +24,6 @@ export function RecognitionPage({ imageUrl, imageFile, onRecognitionComplete, on
       return;
     }
 
-    if (!hasApiKey()) {
-      setShowApiKeyModal(true);
-      setStarted(false);
-      return;
-    }
-
     setStatusText('正在调用 AI 识别...');
 
     recognizeCloud(imageFile)
@@ -40,12 +32,12 @@ export function RecognitionPage({ imageUrl, imageFile, onRecognitionComplete, on
       })
       .catch(err => {
         const msg = err.message;
-        if (msg === 'NO_API_KEY' || msg === 'API_KEY_INVALID') {
-          setShowApiKeyModal(true);
-          setStarted(false);
-          setStatusText('请先配置 API Key');
+        if (msg === 'NOT_LOGGED_IN') {
+          onError('登录已过期，请重新登录');
         } else if (msg === 'NO_CLOUD_DETECTED') {
           onError('未能识别到云彩，试试上传其他天空照片吧');
+        } else if (msg === 'DUPLICATE_IMAGE') {
+          onError('这张照片已经识别过了，换一张新的试试吧');
         } else {
           onError('识别失败: ' + msg);
         }
@@ -56,16 +48,10 @@ export function RecognitionPage({ imageUrl, imageFile, onRecognitionComplete, on
     startRecognition();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleApiKeySaved = () => {
-    setShowApiKeyModal(false);
-    setStarted(false);
-    // 重新触发识别
-    setTimeout(() => startRecognition(), 100);
-  };
-
   return (
     <motion.div
-      className="relative w-full h-screen flex flex-col items-center justify-center"
+      className="relative w-full flex flex-col items-center justify-center"
+      style={{ height: '100%' }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -73,7 +59,8 @@ export function RecognitionPage({ imageUrl, imageFile, onRecognitionComplete, on
     >
       {/* Logo */}
       <motion.div
-        className="absolute top-8 left-0 right-0 z-20 text-center"
+        className="absolute left-0 right-0 z-20 text-center"
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.2 }}
@@ -99,13 +86,6 @@ export function RecognitionPage({ imageUrl, imageFile, onRecognitionComplete, on
       >
         {statusText}
       </motion.p>
-
-      {/* API Key Modal */}
-      <ApiKeyModal
-        open={showApiKeyModal}
-        onClose={() => setShowApiKeyModal(false)}
-        onSaved={handleApiKeySaved}
-      />
     </motion.div>
   );
 }

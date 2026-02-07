@@ -1,78 +1,22 @@
 import { cloudCards, cloudCardMap } from '@/data/cloudCards';
 import type { RecognitionResult, AIAnalysis } from '@/types/cloud';
 
-// 生产环境直接调用阿里云 API，本地开发通过 Vite proxy
+// 后端 API 地址
 const API_BASE_URL = import.meta.env.DEV
-  ? '/api/dashscope/compatible-mode/v1'
-  : 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-const MODEL_NAME = 'qwen-vl-plus';
+  ? '/api'  // 开发环境通过 Vite proxy
+  : '/api';  // 生产环境：同源部署，使用相对路径
 
-const API_KEY_STORAGE = 'dashscope_api_key';
-
-// API Key 管理
-export function getApiKey(): string {
-  return localStorage.getItem(API_KEY_STORAGE) || '';
+// 获取登录 token
+function getToken(): string {
+  try {
+    const raw = localStorage.getItem('cloud-auth');
+    if (raw) {
+      const auth = JSON.parse(raw);
+      return auth.token || '';
+    }
+  } catch { /* ignore */ }
+  return '';
 }
-
-export function setApiKey(key: string): void {
-  localStorage.setItem(API_KEY_STORAGE, key);
-}
-
-export function hasApiKey(): boolean {
-  return !!getApiKey();
-}
-
-// 云彩识别提示词
-const CLOUD_RECOGNITION_PROMPT = `你是一位专业的云彩识别专家，精通《云彩收集者手册》中的所有云彩分类知识。
-
-请仔细分析这张云彩图片，按照以下格式输出识别结果。注意：每个部分内容不要重复，各部分应聚焦自己的主题。
-
-**云族**：[云族名称]（仅说明所属高度层，如高云族/中云族/低云族，一句话即可）
-
-**云属**：[云属名称]（仅说明云属分类名称和最核心的一句话定义）
-
-**云种/变种**：[具体云种名称]（仅说明该云种与同属其他云种的区分要点，不要重复云属信息）
-
-**识别特征**：[仅描述这张图片中云彩的实际视觉表现：形态、颜色、纹理、边界、光影等，不要重复分类信息]
-
-**天气预兆**：[仅说明这种云预示的天气变化，不要描述云的外观特征]
-
-**知识延伸**：[分享一个有趣的冷知识或文化典故，如命名由来、历史轶事、民间谚语等，不要重复以上任何内容]
-
-**识别置信度**：[1-10的整数，表示你对本次识别结果的确信程度。10=非常确定，图片清晰且特征明显；7-9=较确定，主要特征可辨；4-6=不太确定，图片模糊或特征不典型；1-3=很不确定，仅为猜测]
-
-【完整云彩分类参考】
-
-一、核心收集层 - 云本体
-1. 十种云属（WMO官方）：
-   - 高云族（>6000米）：卷云(Ci)、卷层云(Cs)、卷积云(Cc)
-   - 中云族（2000-6000米）：高层云(As)、高积云(Ac)
-   - 低云族（<2000米）：层云(St)、层积云(Sc)、积云(Cu)
-   - 垂直发展云：雨层云(Ns)、积雨云(Cb)
-
-2. 云种（形态特征）：毛状云、堡状云、荚状云、波状云、辐辏状云、网状云
-3. 云变种（排列结构）：复云、漏光云、透光云、蔽光云
-
-二、附属特征层
-4. 附属云/特征：砧状云、悬球状云、幞状云、缟状云、破片云、管状云、降水线迹云、幡状云
-5. 动力云：弧状云、滩云、滚轴云、山帽云、旗云、云街、云中波、马蹄涡
-
-三、奇观收集层 - 光学现象
-6. 晕/折射/衍射：晕、22度晕、幻日、日柱、下映日、环天顶弧、华、宝光、虹彩云
-7. 彩虹类：彩虹、云虹、雾虹
-8. 特殊现象：布罗肯幽灵、钻石尘、闪光路径
-
-四、稀有/特殊云
-9. 高空云：夜光云、贝母云
-10. 穿孔/异常：雨幡洞云、穿孔云、雨幡、云中孔洞
-11. 戏剧性云：阵晨风云、开尔文-亥姆霍兹波、水母云、UFO形状云
-
-五、风暴系统：风暴、多单体风暴、超级单体、阵风锋面、陆龙卷、水龙卷、漏斗云、火积云、烟云
-
-六、人造云与雾：航迹云、耗散尾迹、雾（辐射雾/平流雾/蒸汽雾）、霭
-
-请基于图片中云彩的实际特征进行专业分析，给出准确的识别结果。
-请只识别图片中最主要、最显著的一种云彩或气象现象，给出一个完整的识别结果即可。`;
 
 // 将 File 转为 base64
 function fileToBase64(file: File): Promise<string> {
@@ -84,52 +28,41 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-// 调用通义千问视觉 API
-async function callQwenVLAPI(imageBase64: string): Promise<ParsedResult> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('NO_API_KEY');
+// 调用后端识别 API
+async function callRecognizeAPI(imageBase64: string): Promise<ParsedResult> {
+  const token = getToken();
+  if (!token) {
+    throw new Error('NOT_LOGGED_IN');
   }
 
-  const response = await fetch(`${API_BASE_URL}/chat/completions`, {
+  const response = await fetch(`${API_BASE_URL}/recognize`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({
-      model: MODEL_NAME,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image_url',
-              image_url: { url: imageBase64 },
-            },
-            {
-              type: 'text',
-              text: CLOUD_RECOGNITION_PROMPT,
-            },
-          ],
-        },
-      ],
-      max_tokens: 4000,
+      image_base64: imageBase64,
     }),
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    const msg = errorData.error?.message || `API 请求失败 (${response.status})`;
     if (response.status === 401) {
-      throw new Error('API_KEY_INVALID');
+      throw new Error('NOT_LOGGED_IN');
     }
+    if (response.status === 422 && errorData.detail === 'NO_CLOUD_DETECTED') {
+      throw new Error('NO_CLOUD_DETECTED');
+    }
+    if (response.status === 409 && errorData.detail === 'DUPLICATE_IMAGE') {
+      throw new Error('DUPLICATE_IMAGE');
+    }
+    const msg = errorData.detail || `识别失败 (${response.status})`;
     throw new Error(msg);
   }
 
   const data = await response.json();
-  const content = data.choices[0].message.content;
-  return parseRecognitionResult(content);
+  return parseRecognitionResult(data.content);
 }
 
 // AI 返回的解析结果
@@ -355,7 +288,7 @@ export function compressToThumbnail(file: File, maxWidth = 200, quality = 0.6): 
 // 主入口：识别云朵
 export async function recognizeCloud(file: File): Promise<RecognitionResult> {
   const imageBase64 = await fileToBase64(file);
-  const parsed = await callQwenVLAPI(imageBase64);
+  const parsed = await callRecognizeAPI(imageBase64);
 
   const result = mapToRecognitionResult(parsed);
   if (!result) {

@@ -14,10 +14,9 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api/dashscope': {
-        target: 'https://dashscope.aliyuncs.com',
+      '/api': {
+        target: 'http://106.14.148.230:8000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/dashscope/, ''),
       },
     },
   },

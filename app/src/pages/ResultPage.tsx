@@ -4,7 +4,7 @@ import { CardFlip } from '@/components/CardFlip';
 import { RARITY_CONFIG } from '@/data/rarityConfig';
 import type { RecognitionResult } from '@/types/cloud';
 import { cloudCardMap } from '@/data/cloudCards';
-import { Sparkles, Flame } from 'lucide-react';
+import { Sparkles, Flame, ArrowLeft } from 'lucide-react';
 
 interface StreakInfo {
   streakCount: number;
@@ -35,7 +35,8 @@ export function ResultPage({ result, streakInfo, inCooldown, onLitCard, onBack }
 
   return (
     <motion.div
-      className="relative w-full min-h-screen flex flex-col items-center justify-center overflow-hidden py-16"
+      className="relative w-full flex flex-col items-center justify-center overflow-hidden py-16"
+      style={{ height: '100%' }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -43,7 +44,8 @@ export function ResultPage({ result, streakInfo, inCooldown, onLitCard, onBack }
     >
       {/* Logo */}
       <motion.div
-        className="absolute top-8 left-0 right-0 z-20 text-center"
+        className="absolute left-0 right-0 z-20 text-center"
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.2 }}
@@ -206,17 +208,18 @@ export function ResultPage({ result, streakInfo, inCooldown, onLitCard, onBack }
         )}
       </AnimatePresence>
 
-      {/* Back button */}
+      {/* Back button — fixed top-left */}
       <motion.button
-        className="absolute bottom-8 text-xs tracking-wider text-gray-400 hover:text-gray-600 transition-colors"
-        style={{ fontFamily: '"Montserrat", sans-serif' }}
+        className="absolute left-6 z-20 flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 transition-colors"
+        style={{ fontFamily: '"Montserrat", sans-serif', top: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}
         onClick={onBack}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1.5 }}
-        whileHover={{ scale: 1.05 }}
+        whileHover={{ x: -2 }}
       >
-        返回首页
+        <ArrowLeft className="w-4 h-4" />
+        返回
       </motion.button>
     </motion.div>
   );

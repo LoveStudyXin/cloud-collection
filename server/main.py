@@ -1,0 +1,364 @@
+"""
+Cloud Collection 后端 API 服务
+功能：用户注册/登录 + 云朵识别（代理 DashScope API）
+"""
+
+import os
+import io
+import base64
+import sqlite3
+import hashlib
+import secrets
+import time
+from datetime import datetime, timedelta
+from contextlib import contextmanager
+
+import httpx
+import jwt
+import imagehash
+from PIL import Image
+from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, EmailStr
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ============ 配置 ============
+
+DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
+JWT_SECRET = os.getenv("JWT_SECRET", secrets.token_hex(32))
+JWT_EXPIRE_DAYS = 30
+DB_PATH = os.getenv("DB_PATH", "cloud_collection.db")
+DASHSCOPE_API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+MODEL_NAME = "qwen-vl-plus"
+
+# ============ 数据库 ============
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS image_hashes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            phash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
+
+@contextmanager
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+# ============ 密码工具 ============
+
+def hash_password(password: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac(
+        "sha256", password.encode(), salt.encode(), 100000
+    ).hex()
+
+def verify_password(password: str, salt: str, password_hash: str) -> bool:
+    return hash_password(password, salt) == password_hash
+
+# ============ JWT 工具 ============
+
+def create_token(user_id: int, email: str) -> str:
+    payload = {
+        "user_id": user_id,
+        "email": email,
+        "exp": datetime.utcnow() + timedelta(days=JWT_EXPIRE_DAYS),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+def verify_token(authorization: str = Header(...)) -> dict:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="无效的认证格式")
+    token = authorization[7:]
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="无效的认证信息")
+
+# ============ 请求/响应模型 ============
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+class AuthResponse(BaseModel):
+    token: str
+    email: str
+
+class RecognizeRequest(BaseModel):
+    image_base64: str  # 完整的 data:image/... base64 字符串
+
+# ============ 图片去重工具 ============
+
+PHASH_THRESHOLD = 5  # 汉明距离阈值，<=5 视为同一张图
+
+def compute_phash(image_base64: str) -> str:
+    """从 base64 图片计算感知哈希"""
+    # 去掉 data:image/xxx;base64, 前缀
+    if "," in image_base64:
+        image_base64 = image_base64.split(",", 1)[1]
+    raw = base64.b64decode(image_base64)
+    img = Image.open(io.BytesIO(raw))
+    return str(imagehash.phash(img))
+
+def is_duplicate_image(conn, user_id: int, new_hash: str) -> bool:
+    """检查该用户是否上传过相似图片"""
+    rows = conn.execute(
+        "SELECT phash FROM image_hashes WHERE user_id = ?", (user_id,)
+    ).fetchall()
+    new_h = imagehash.hex_to_hash(new_hash)
+    for row in rows:
+        old_h = imagehash.hex_to_hash(row["phash"])
+        if new_h - old_h <= PHASH_THRESHOLD:
+            return True
+    return False
+
+def save_image_hash(conn, user_id: int, phash: str):
+    """保存图片哈希到数据库"""
+    conn.execute(
+        "INSERT INTO image_hashes (user_id, phash, created_at) VALUES (?, ?, ?)",
+        (user_id, phash, datetime.utcnow().isoformat()),
+    )
+    conn.commit()
+
+# ============ 云朵识别提示词 ============
+
+CLOUD_RECOGNITION_PROMPT = """你是一位专业的云彩识别专家，精通《云彩收集者手册》中的所有云彩分类知识。
+
+**重要**：请先判断图片中是否包含云彩或天空气象现象。
+- 如果图片中**没有**云彩、天空或气象现象（例如室内照片、食物、人物、动物、建筑物特写等），请只回复：**无云**
+- 如果图片中**有**云彩或天空气象现象，请按照以下格式输出识别结果。注意：每个部分内容不要重复，各部分应聚焦自己的主题。
+
+**云族**：[云族名称]（仅说明所属高度层，如高云族/中云族/低云族，一句话即可）
+
+**云属**：[云属名称]（仅说明云属分类名称和最核心的一句话定义）
+
+**云种/变种**：[具体云种名称]（仅说明该云种与同属其他云种的区分要点，不要重复云属信息）
+
+**识别特征**：[仅描述这张图片中云彩的实际视觉表现：形态、颜色、纹理、边界、光影等，不要重复分类信息]
+
+**天气预兆**：[仅说明这种云预示的天气变化，不要描述云的外观特征]
+
+**知识延伸**：[分享一个有趣的冷知识或文化典故，如命名由来、历史轶事、民间谚语等，不要重复以上任何内容]
+
+**识别置信度**：[1-10的整数，表示你对本次识别结果的确信程度。10=非常确定，图片清晰且特征明显；7-9=较确定，主要特征可辨；4-6=不太确定，图片模糊或特征不典型；1-3=很不确定，仅为猜测]
+
+【完整云彩分类参考】
+
+一、核心收集层 - 云本体
+1. 十种云属（WMO官方）：
+   - 高云族（>6000米）：卷云(Ci)、卷层云(Cs)、卷积云(Cc)
+   - 中云族（2000-6000米）：高层云(As)、高积云(Ac)
+   - 低云族（<2000米）：层云(St)、层积云(Sc)、积云(Cu)
+   - 垂直发展云：雨层云(Ns)、积雨云(Cb)
+
+2. 云种（形态特征）：毛状云、堡状云、荚状云、波状云、辐辏状云、网状云
+3. 云变种（排列结构）：复云、漏光云、透光云、蔽光云
+
+二、附属特征层
+4. 附属云/特征：砧状云、悬球状云、幞状云、缟状云、破片云、管状云、降水线迹云、幡状云
+5. 动力云：弧状云、滩云、滚轴云、山帽云、旗云、云街、云中波、马蹄涡
+
+三、奇观收集层 - 光学现象
+6. 晕/折射/衍射：晕、22度晕、幻日、日柱、下映日、环天顶弧、华、宝光、虹彩云
+7. 彩虹类：彩虹、云虹、雾虹
+8. 特殊现象：布罗肯幽灵、钻石尘、闪光路径
+
+四、稀有/特殊云
+9. 高空云：夜光云、贝母云
+10. 穿孔/异常：雨幡洞云、穿孔云、雨幡、云中孔洞
+11. 戏剧性云：阵晨风云、开尔文-亥姆霍兹波、水母云、UFO形状云
+
+五、风暴系统：风暴、多单体风暴、超级单体、阵风锋面、陆龙卷、水龙卷、漏斗云、火积云、烟云
+
+六、人造云与雾：航迹云、耗散尾迹、雾（辐射雾/平流雾/蒸汽雾）、霭
+
+请基于图片中云彩的实际特征进行专业分析，给出准确的识别结果。
+请只识别图片中最主要、最显著的一种云彩或气象现象，给出一个完整的识别结果即可。"""
+
+# ============ FastAPI 应用 ============
+
+app = FastAPI(title="Cloud Collection API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 生产环境可限制为你的域名
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ---------- 健康检查 ----------
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "time": datetime.utcnow().isoformat()}
+
+# ---------- 用户注册 ----------
+
+@app.post("/api/register", response_model=AuthResponse)
+def register(req: RegisterRequest):
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="密码至少需要6个字符")
+
+    salt = secrets.token_hex(16)
+    password_hash = hash_password(req.password, salt)
+    created_at = datetime.utcnow().isoformat()
+
+    with get_db() as conn:
+        try:
+            cursor = conn.execute(
+                "INSERT INTO users (email, password_hash, salt, created_at) VALUES (?, ?, ?, ?)",
+                (req.email, password_hash, salt, created_at),
+            )
+            conn.commit()
+            user_id = cursor.lastrowid
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="该邮箱已注册")
+
+    token = create_token(user_id, req.email)
+    return AuthResponse(token=token, email=req.email)
+
+# ---------- 用户登录 ----------
+
+@app.post("/api/login", response_model=AuthResponse)
+def login(req: LoginRequest):
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id, email, password_hash, salt FROM users WHERE email = ?",
+            (req.email,),
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=400, detail="该邮箱尚未注册")
+
+    if not verify_password(req.password, row["salt"], row["password_hash"]):
+        raise HTTPException(status_code=400, detail="密码错误")
+
+    token = create_token(row["id"], row["email"])
+    return AuthResponse(token=token, email=row["email"])
+
+# ---------- 云朵识别 ----------
+
+@app.post("/api/recognize")
+async def recognize(req: RecognizeRequest, user: dict = Depends(verify_token)):
+    if not DASHSCOPE_API_KEY:
+        raise HTTPException(status_code=500, detail="服务器未配置 AI 识别密钥")
+
+    # 计算图片 pHash 并检查是否重复
+    user_id = user["user_id"]
+    try:
+        img_phash = compute_phash(req.image_base64)
+    except Exception:
+        img_phash = None  # 哈希计算失败不阻断识别
+
+    if img_phash:
+        with get_db() as conn:
+            if is_duplicate_image(conn, user_id, img_phash):
+                raise HTTPException(status_code=409, detail="DUPLICATE_IMAGE")
+
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": req.image_base64}},
+                    {"type": "text", "text": CLOUD_RECOGNITION_PROMPT},
+                ],
+            }
+        ],
+        "max_tokens": 4000,
+    }
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            resp = await client.post(
+                DASHSCOPE_API_URL,
+                json=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {DASHSCOPE_API_KEY}",
+                },
+            )
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail="AI 识别超时，请稍后重试")
+
+    if resp.status_code != 200:
+        detail = "AI 识别服务暂时不可用"
+        try:
+            err = resp.json()
+            detail = err.get("error", {}).get("message", detail)
+        except Exception:
+            pass
+        raise HTTPException(status_code=502, detail=detail)
+
+    data = resp.json()
+    content = data["choices"][0]["message"]["content"]
+
+    # 检查 AI 是否判定图片中没有云
+    content_stripped = content.strip().replace("*", "")
+    if content_stripped == "无云" or content_stripped.startswith("无云"):
+        raise HTTPException(status_code=422, detail="NO_CLOUD_DETECTED")
+
+    # 识别成功，保存图片哈希防止重复提交
+    if img_phash:
+        with get_db() as conn:
+            save_image_hash(conn, user_id, img_phash)
+
+    return {"content": content}
+
+# ============ 前端静态文件托管 ============
+
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+if os.path.isdir(STATIC_DIR):
+    # 托管静态资源（JS/CSS/图片等）
+    app.mount("/assets", StaticFiles(directory=os.path.join(STATIC_DIR, "assets")), name="static-assets")
+
+    # 所有非 /api 路径返回 index.html（SPA 路由）
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # 先检查是否是静态文件
+        file_path = os.path.join(STATIC_DIR, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        # 否则返回 index.html
+        return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+# ============ 启动入口 ============
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

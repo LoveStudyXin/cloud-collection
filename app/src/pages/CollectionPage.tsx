@@ -56,7 +56,8 @@ export function CollectionPage({ points, getCardState, onCardClick, onUnlockCard
 
   return (
     <motion.div
-      className="relative w-full min-h-screen overflow-y-auto pb-20"
+      className="relative w-full overflow-y-auto pb-20"
+      style={{ height: '100%' }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -64,8 +65,9 @@ export function CollectionPage({ points, getCardState, onCardClick, onUnlockCard
     >
       {/* Header */}
       <motion.div
-        className="sticky top-0 z-30 flex items-center justify-between px-6 py-4"
+        className="sticky top-0 z-30 flex items-center justify-between px-6 pb-4"
         style={{
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)',
           background: 'rgba(232, 244, 252, 0.9)',
           backdropFilter: 'blur(12px)',
         }}

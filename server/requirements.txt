@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+httpx
+pyjwt
+python-dotenv
+pydantic[email]
+imagehash
+Pillow

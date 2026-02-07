@@ -1,18 +1,21 @@
 import { useState, useCallback } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { CloudBackground } from '@/components/CloudBackground';
+import { LoginPage } from '@/pages/LoginPage';
 import { HomePage } from '@/pages/HomePage';
 import { RecognitionPage } from '@/pages/RecognitionPage';
 import { ResultPage } from '@/pages/ResultPage';
 import { DetailPage } from '@/pages/DetailPage';
 import { CollectionPage } from '@/pages/CollectionPage';
 import { useUserState } from '@/hooks/useUserState';
+import { useAuth } from '@/hooks/useAuth';
 import { cloudCardMap } from '@/data/cloudCards';
 import { compressToThumbnail } from '@/services/cloudRecognition';
 import type { RecognitionResult, CloudCard, AIAnalysis } from '@/types/cloud';
 import './App.css';
 
 type ViewState =
+  | { type: 'login' }
   | { type: 'home' }
   | { type: 'recognition'; imageUrl?: string; imageFile?: File }
   | { type: 'result'; result: RecognitionResult; imageUrl?: string; thumbnail?: string }
@@ -20,7 +23,8 @@ type ViewState =
   | { type: 'collection' };
 
 function App() {
-  const [view, setView] = useState<ViewState>({ type: 'home' });
+  const auth = useAuth();
+  const [view, setView] = useState<ViewState>(auth.isAuthenticated ? { type: 'home' } : { type: 'login' });
   const { points, getCardState, litCard, unlockCard, getStreakInfo, isInCooldown } = useUserState();
 
   // Handle image capture
@@ -79,11 +83,27 @@ function App() {
   }, []);
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative overflow-hidden" style={{ height: '100%' }}>
       <CloudBackground />
 
-      <div className="relative z-10">
+      <div className="relative z-10 h-full">
         <AnimatePresence mode="wait">
+          {view.type === 'login' && (
+            <LoginPage
+              key="login"
+              onLogin={async (email, password) => {
+                const err = await auth.login(email, password);
+                if (!err) setView({ type: 'home' });
+                return err;
+              }}
+              onRegister={async (email, password) => {
+                const err = await auth.register(email, password);
+                if (!err) setView({ type: 'home' });
+                return err;
+              }}
+            />
+          )}
+
           {view.type === 'home' && (
             <HomePage
               key="home"
@@ -92,6 +112,10 @@ function App() {
               onCapture={handleCapture}
               onCardClick={handleCardClick}
               onCollectionClick={goCollection}
+              onLogout={() => {
+                auth.logout();
+                setView({ type: 'login' });
+              }}
             />
           )}
 

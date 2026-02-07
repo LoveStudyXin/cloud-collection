@@ -1,5 +1,20 @@
 /* Custom styles for Cloud Collection */
 
+/* 动态视口高度 — 适配不同手机屏幕（安全区、状态栏等） */
+:root {
+  --app-height: 100vh;
+  --app-height: 100dvh;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  top: 0;
+  left: 0;
+}
+
 /* Smooth scrolling */
 html {
   scroll-behavior: smooth;

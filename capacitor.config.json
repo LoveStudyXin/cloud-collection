@@ -1,0 +1,5 @@
+{
+  "appId": "com.cloud.collection.app",
+  "appName": "cloud collection",
+  "webDir": "dist"
+}

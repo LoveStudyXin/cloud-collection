@@ -6,7 +6,7 @@ import { PointsDisplay } from '@/components/PointsDisplay';
 import { GoldenDecoration } from '@/components/GoldenDecoration';
 import { cloudCards } from '@/data/cloudCards';
 import type { UserCardState } from '@/types/cloud';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, MoreVertical, LogOut } from 'lucide-react';
 
 const WELCOME_SHOWN_KEY = 'cloud-collection-welcome-shown';
 
@@ -25,13 +25,15 @@ interface HomePageProps {
   onCapture: (file: File) => void;
   onCardClick: (cardId: string) => void;
   onCollectionClick: () => void;
+  onLogout: () => void;
 }
 
-export function HomePage({ points, getCardState, onCapture, onCardClick, onCollectionClick }: HomePageProps) {
+export function HomePage({ points, getCardState, onCapture, onCardClick, onCollectionClick, onLogout }: HomePageProps) {
   const isNewUser = useRef(!localStorage.getItem(WELCOME_SHOWN_KEY));
   const [showWelcome, setShowWelcome] = useState(isNewUser.current);
   const [cardsRevealed, setCardsRevealed] = useState(!isNewUser.current);
   const [animatedPoints, setAnimatedPoints] = useState(isNewUser.current ? 0 : points);
+  const [showMenu, setShowMenu] = useState(false);
 
   useEffect(() => {
     if (!isNewUser.current) return;
@@ -62,7 +64,8 @@ export function HomePage({ points, getCardState, onCapture, onCardClick, onColle
 
   return (
     <motion.div
-      className="relative w-full min-h-screen flex flex-col items-center overflow-hidden"
+      className="relative w-full flex flex-col items-center overflow-hidden"
+      style={{ height: '100%' }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -70,7 +73,8 @@ export function HomePage({ points, getCardState, onCapture, onCardClick, onColle
     >
       {/* Header */}
       <motion.div
-        className="w-full flex items-center justify-between px-6 pt-6 pb-2 z-20"
+        className="w-full flex items-center justify-between px-6 pb-2 z-20"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.2 }}
@@ -81,7 +85,49 @@ export function HomePage({ points, getCardState, onCapture, onCardClick, onColle
         >
           Cloud Collection
         </h1>
-        <PointsDisplay points={animatedPoints} />
+        <div className="flex items-center gap-2">
+          <PointsDisplay points={animatedPoints} />
+          <div className="relative">
+            <button
+              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+              onClick={() => setShowMenu(prev => !prev)}
+            >
+              <MoreVertical className="w-4 h-4" />
+            </button>
+            <AnimatePresence>
+              {showMenu && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setShowMenu(false)} />
+                  <motion.div
+                    className="absolute right-0 top-full mt-1 z-40 rounded-lg py-1 min-w-[120px]"
+                    style={{
+                      background: 'rgba(255,255,255,0.95)',
+                      backdropFilter: 'blur(12px)',
+                      border: '1px solid rgba(0,0,0,0.08)',
+                      boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+                    }}
+                    initial={{ opacity: 0, scale: 0.9, y: -4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, y: -4 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <button
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                      style={{ fontFamily: '"Montserrat", sans-serif' }}
+                      onClick={() => {
+                        setShowMenu(false);
+                        onLogout();
+                      }}
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      退出登录
+                    </button>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
       </motion.div>
 
       {/* Main content area */}
@@ -128,7 +174,8 @@ export function HomePage({ points, getCardState, onCapture, onCardClick, onColle
 
       {/* Collection button */}
       <motion.div
-        className="absolute bottom-6 right-8 z-20 flex items-center gap-4"
+        className="absolute right-8 z-20 flex items-center gap-4"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: 1 }}
