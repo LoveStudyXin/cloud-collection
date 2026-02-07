@@ -5,7 +5,11 @@
 
 import type { UserState, AIAnalysis } from '@/types/cloud';
 
-const API_BASE_URL = import.meta.env.DEV ? '/api' : '/api';
+// Capacitor 原生应用中页面从本地加载，必须用完整地址
+const isNative = typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.();
+const API_BASE_URL = isNative
+  ? 'http://106.14.148.230:8000/api'
+  : '/api';
 
 function getToken(): string {
   try {

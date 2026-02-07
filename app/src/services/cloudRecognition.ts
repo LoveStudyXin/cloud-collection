@@ -2,9 +2,11 @@ import { cloudCards, cloudCardMap } from '@/data/cloudCards';
 import type { RecognitionResult, AIAnalysis } from '@/types/cloud';
 
 // 后端 API 地址
-const API_BASE_URL = import.meta.env.DEV
-  ? '/api'  // 开发环境通过 Vite proxy
-  : '/api';  // 生产环境：同源部署，使用相对路径
+// Capacitor 原生应用中页面从本地加载，必须用完整地址
+const isNative = typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.();
+const API_BASE_URL = isNative
+  ? 'http://106.14.148.230:8000/api'
+  : '/api';
 
 // 获取登录 token
 function getToken(): string {

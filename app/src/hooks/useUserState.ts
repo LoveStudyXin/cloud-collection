@@ -116,27 +116,23 @@ export function useUserState(isAuthenticated?: boolean) {
       try {
         const serverState = await fetchUserState();
 
-        // 检查服务端是否有有意义的数据
+        // 检查本地是否有未迁移的数据
+        const localState = getInitialState();
+        const alreadyMigrated = localStorage.getItem(MIGRATED_KEY) === '1';
         const serverHasData = serverState.totalLitCount > 0
           || Object.keys(serverState.cards).length > STARTER_CARD_IDS.length;
 
-        if (serverHasData) {
-          // 服务端有数据，合并到本地
-          setState(prev => mergeServerState(serverState, prev));
-        } else {
-          // 服务端无数据，检查本地是否需要迁移
-          const localState = getInitialState();
-          const alreadyMigrated = localStorage.getItem(MIGRATED_KEY) === '1';
-
-          if (!alreadyMigrated && localState.totalLitCount > 0) {
-            // 本地有数据需要迁移
-            try {
-              await migrateLocalState(localState);
-              localStorage.setItem(MIGRATED_KEY, '1');
-            } catch {
-              // 迁移失败不阻塞，下次再试
-            }
+        if (!alreadyMigrated && !serverHasData && localState.totalLitCount > 0) {
+          // 服务端无数据但本地有数据，迁移到服务端
+          try {
+            await migrateLocalState(localState);
+            localStorage.setItem(MIGRATED_KEY, '1');
+          } catch {
+            // 迁移失败不阻塞，下次再试
           }
+        } else {
+          // 服务端数据为准，合并到本地（保留本地缩略图）
+          setState(prev => mergeServerState(serverState, prev));
         }
       } catch {
         // 离线或请求失败，继续使用本地数据
