@@ -29,7 +29,8 @@ interface HomePageProps {
 }
 
 export function HomePage({ points, getCardState, onCapture, onCardClick, onCollectionClick, onLogout }: HomePageProps) {
-  const isNewUser = useRef(!localStorage.getItem(WELCOME_SHOWN_KEY));
+  // 判断是否为新用户：localStorage 没标记过 且 积分正好是初始30分（说明是全新用户）
+  const isNewUser = useRef(!localStorage.getItem(WELCOME_SHOWN_KEY) && points <= 30);
   const [showWelcome, setShowWelcome] = useState(isNewUser.current);
   const [cardsRevealed, setCardsRevealed] = useState(!isNewUser.current);
   const [animatedPoints, setAnimatedPoints] = useState(isNewUser.current ? 0 : points);

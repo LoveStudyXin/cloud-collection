@@ -1,12 +1,8 @@
 import { cloudCards, cloudCardMap } from '@/data/cloudCards';
 import type { RecognitionResult, AIAnalysis } from '@/types/cloud';
 
-// 后端 API 地址
-// Capacitor 原生应用中页面从本地加载，必须用完整地址
-const isNative = typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.();
-const API_BASE_URL = isNative
-  ? 'http://106.14.148.230:8000/api'
-  : '/api';
+// 后端 API 地址 — 统一使用绝对地址，兼容网页/iOS/安卓
+const API_BASE_URL = 'http://106.14.148.230:8000/api';
 
 // 获取登录 token
 function getToken(): string {

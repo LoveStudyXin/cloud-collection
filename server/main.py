@@ -303,8 +303,8 @@ app = FastAPI(title="Cloud Collection API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境可限制为你的域名
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
